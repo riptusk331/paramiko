@@ -191,6 +191,7 @@ class BaseSFTP(object):
         return out
 
     def _send_packet(self, t, packet):
+        # THIS IS THE ACTUAL SFTP PACKET
         packet = asbytes(packet)
         out = struct.pack(">I", len(packet) + 1) + byte_chr(t) + packet
         if self.ultra_debug:
