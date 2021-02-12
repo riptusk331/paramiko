@@ -474,6 +474,7 @@ class Transport(threading.Thread, ClosingContextManager):
         self.clear_to_send_timeout = 30.0
         self.log_name = "paramiko.transport"
         self.logger = util.get_logger(self.log_name)
+        self.logger.debug("TRANSPORT INITIALIZED")
         self.packetizer.set_log(self.logger)
         self.auth_handler = None
         # response Message from an arbitrary global request
@@ -650,6 +651,7 @@ class Transport(threading.Thread, ClosingContextManager):
 
         # synchronous, wait for a result
         self.completion_event = event = threading.Event()
+        self.logger.debug("WE'RE STARTING THE CLIENT IN A NEW THREAD")
         self.start()
         max_time = time.time() + timeout if timeout is not None else None
         while True:
@@ -2024,6 +2026,7 @@ class Transport(threading.Thread, ClosingContextManager):
 
         # active=True occurs before the thread is launched, to avoid a race
         _active_threads.append(self)
+        self._log(DEBUG, "I'M THE NEW CLIENT. JUST ADDED MYSELF TO ACTIVE THREADS")
         tid = hex(long(id(self)) & xffffffff)
         if self.server_mode:
             self._log(DEBUG, "starting thread (server mode): {}".format(tid))
@@ -2047,21 +2050,32 @@ class Transport(threading.Thread, ClosingContextManager):
                 self.packetizer.start_handshake(self.handshake_timeout)
                 self._send_kex_init()
                 self._expect_packet(MSG_KEXINIT)
-
+                self._log(DEBUG,"DROPPING INTO ACTIVE LOOP MODE")
+                loop_count = 0
                 while self.active:
+                    self._log(DEBUG, f"STARTING LOOP {loop_count}")
                     if self.packetizer.need_rekey() and not self.in_kex:
                         self._send_kex_init()
                     try:
+                        self._log(DEBUG, F"ABOUT TO READ")
                         ptype, m = self.packetizer.read_message()
+                        self._log(DEBUG, F"READ IT")
                     except NeedRekeyException:
+                        self._log(DEBUG, F"NEEDS REKEY")
+                        loop_count += 1
                         continue
                     if ptype == MSG_IGNORE:
+                        self._log(DEBUG, F"IGNORING THIS MESSAGE")
+                        loop_count += 1
                         continue
                     elif ptype == MSG_DISCONNECT:
+                        self._log(DEBUG, F"TIME TO DISCONNECT")
                         self._parse_disconnect(m)
                         break
                     elif ptype == MSG_DEBUG:
+                        self._log(DEBUG, F"TIME TO DEBUG")
                         self._parse_debug(m)
+                        loop_count += 1
                         continue
                     if len(self._expected_packet) > 0:
                         if ptype not in self._expected_packet:
@@ -2073,15 +2087,18 @@ class Transport(threading.Thread, ClosingContextManager):
                         self._expected_packet = tuple()
                         if (ptype >= 30) and (ptype <= 41):
                             self.kex_engine.parse_next(ptype, m)
+                            loop_count += 1
                             continue
 
                     if ptype in self._handler_table:
+                        self._log(DEBUG, F"PACKET TYPE {ptype} WAS IN PACKET HANDLER TABLE")
                         error_msg = self._ensure_authed(ptype, m)
                         if error_msg:
                             self._send_message(error_msg)
                         else:
                             self._handler_table[ptype](self, m)
                     elif ptype in self._channel_handler_table:
+                        self._log(DEBUG, F"PACKET TYPE {ptype} WAS IN CHANNEL HANDLER TABLE")
                         chanid = m.get_int()
                         chan = self._channels.get(chanid)
                         if chan is not None:
@@ -2105,9 +2122,11 @@ class Transport(threading.Thread, ClosingContextManager):
                         self.auth_handler is not None
                         and ptype in self.auth_handler._handler_table
                     ):
+                        self._log(DEBUG, "SOME KIND OF AUTH HANDLER")
                         handler = self.auth_handler._handler_table[ptype]
                         handler(self.auth_handler, m)
                         if len(self._expected_packet) > 0:
+                            loop_count += 1
                             continue
                     else:
                         # Respond with "I don't implement this particular
@@ -2125,6 +2144,7 @@ class Transport(threading.Thread, ClosingContextManager):
                             msg.add_int(m.seqno)
                             self._send_message(msg)
                     self.packetizer.complete_handshake()
+                    loop_count += 1
             except SSHException as e:
                 self._log(ERROR, "Exception: " + str(e))
                 self._log(ERROR, util.tb_strings())

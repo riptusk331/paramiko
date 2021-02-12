@@ -26,7 +26,7 @@ import array
 import threading
 import time
 from paramiko.py3compat import PY2, b
-
+import logging
 
 class PipeTimeout(IOError):
     """
@@ -97,12 +97,14 @@ class BufferedPipe(object):
         :param data: the data to add, as a ``str`` or ``bytes``
         """
         self._lock.acquire()
+        logging.debug("WE'RE LOCKED & FEEDING THE BUFFER")
         try:
             if self._event is not None:
                 self._event.set()
             self._buffer_frombytes(b(data))
             self._cv.notifyAll()
         finally:
+            logging.debug("UNLOCKING NOW")
             self._lock.release()
 
     def read_ready(self):
@@ -146,6 +148,7 @@ class BufferedPipe(object):
         """
         out = bytes()
         self._lock.acquire()
+        logging.debug("LOCK ACQUIRED, ATTEMPTING TO READ")
         try:
             if len(self._buffer) == 0:
                 if self._closed:
@@ -157,7 +160,9 @@ class BufferedPipe(object):
                 # grabbed everything in the buffer.
                 while (len(self._buffer) == 0) and not self._closed:
                     then = time.time()
+                    logging.debug("GOING TO SLEEP")
                     self._cv.wait(timeout)
+                    logging.debug("I HAVE WOKEN UP")
                     if timeout is not None:
                         timeout -= time.time() - then
                         if timeout <= 0.0:
@@ -165,14 +170,17 @@ class BufferedPipe(object):
 
             # something's in the buffer and we have the lock!
             if len(self._buffer) <= nbytes:
+                logging.debug("THERE'S SHIT IN THE BUFFER!")
                 out = self._buffer_tobytes()
                 del self._buffer[:]
                 if (self._event is not None) and not self._closed:
                     self._event.clear()
             else:
+                logging.debug("THERE'S SHIT IN THE BUFFER!")
                 out = self._buffer_tobytes(nbytes)
                 del self._buffer[:nbytes]
         finally:
+            logging.debug("BUFFER READ RELEASING LOCK")
             self._lock.release()
 
         return out

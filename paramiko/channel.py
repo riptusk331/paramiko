@@ -696,7 +696,9 @@ class Channel(ClosingContextManager):
             if no data is ready before the timeout set by `settimeout`.
         """
         try:
+            self._log(DEBUG, "ABOUT TO READ FROM THE BUFFER")
             out = self.in_buffer.read(nbytes, self.timeout)
+            self._log(DEBUG, "WE'VE READ FROM THE BUFFER")
         except PipeTimeout:
             raise socket.timeout()
 

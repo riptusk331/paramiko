@@ -182,6 +182,7 @@ class BaseSFTP(object):
                         x = self.sock.recv(n)
                         break
             else:
+                self._log(DEBUG, f"READ FROM CHANNEL. N IS {n}")
                 x = self.sock.recv(n)
 
             if len(x) == 0:
@@ -203,6 +204,7 @@ class BaseSFTP(object):
         # most sftp servers won't accept packets larger than about 32k, so
         # anything with the high byte set (> 16MB) is just garbage.
         if byte_ord(x[0]):
+            self._log(DEBUG, f"{x}")
             raise SFTPError("Garbage packet received")
         size = struct.unpack(">I", x)[0]
         data = self._read_all(size)

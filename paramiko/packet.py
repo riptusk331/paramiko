@@ -298,14 +298,18 @@ class Packetizer(object):
             if self.handshake_timed_out():
                 raise EOFError()
             try:
+                self._log(DEBUG, f"OK LET'S GO READ FROM THE SOCKET {n} BYTES")
                 x = self.__socket.recv(n)
+                self._log(DEBUG, f"WE RECEIVED FROM THE SOCKET {n} BYTES")
                 if len(x) == 0:
                     raise EOFError()
                 out += x
                 n -= len(x)
             except socket.timeout:
+                self._log(DEBUG, F"WE GOT A SOCKET TIMEOUT")
                 got_timeout = True
             except socket.error as e:
+                self._log(DEBUG, f"WE GOT A SOCKET ERROR")
                 # on Linux, sometimes instead of socket.timeout, we get
                 # EAGAIN.  this is a bug in recent (> 2.6.9) kernels but
                 # we need to work around it.
@@ -324,6 +328,7 @@ class Packetizer(object):
                     raise EOFError()
                 if check_rekey and (len(out) == 0) and self.__need_rekey:
                     raise NeedRekeyException()
+                self._log(DEBUG, f"SOCKET TIMED OUT, CHECK KEEPALIVE")
                 self._check_keepalive()
         return out
 
@@ -457,6 +462,7 @@ class Packetizer(object):
         :raises: `.NeedRekeyException` -- if the transport should rekey
         """
         header = self.read_all(self.__block_size_in, check_rekey=True)
+        self._log(DEBUG, "READ A HEADER")
         if self.__etm_in:
             if self.__dump_packets:
                 self._log(DEBUG, util.format_binary(header, "IN: "))
